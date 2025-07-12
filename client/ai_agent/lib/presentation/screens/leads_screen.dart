@@ -3,8 +3,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/lead_bloc.dart';
 import '../bloc/lead_event.dart';
 import '../bloc/lead_state.dart';
+import '../bloc/chat_bloc.dart';
 import '../widgets/improved_lead_card.dart';
+import 'chat_screen.dart';
 import '../../core/enums/lead_enums.dart';
+import '../../core/di/injection.dart';
 
 class LeadsScreen extends StatefulWidget {
   const LeadsScreen({super.key});
@@ -106,7 +109,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(onPressed: _addNewLead, icon: const Icon(Icons.add), label: const Text('Add Lead')),
+      floatingActionButton: FloatingActionButton.extended(onPressed: _openChatAssistant, icon: const Icon(Icons.smart_toy_rounded), label: const Text('AI Assistant'), backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
     );
   }
 
@@ -271,7 +274,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
     );
   }
 
-  void _addNewLead() {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add new lead')));
+  void _openChatAssistant() async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (context) => BlocProvider(create: (context) => getIt<ChatBloc>(), child: const ChatScreen()), fullscreenDialog: true));
+
+    // Refresh leads when returning from chat
+    if (mounted) {
+      context.read<LeadBloc>().add(const RefreshLeads());
+    }
   }
 }
