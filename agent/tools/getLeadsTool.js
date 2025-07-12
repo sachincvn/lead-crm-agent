@@ -2,9 +2,38 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import axios from "axios";
 
+// ✅ Local helper to resolve "today", "tomorrow", "yesterday"
+function parseNaturalDate(input) {
+  const today = new Date();
+
+  if (input === "today") {
+    return today.toISOString().split("T")[0];
+  }
+
+  if (input === "tomorrow") {
+    today.setDate(today.getDate() + 1);
+    return today.toISOString().split("T")[0];
+  }
+
+  if (input === "yesterday") {
+    today.setDate(today.getDate() - 1);
+    return today.toISOString().split("T")[0];
+  }
+
+  return input; // already a date or unknown string
+}
+
 export const getLeadsTool = tool(
   async ({ filters }) => {
     try {
+      // ✅ Use the helper
+      if (filters?.meetingDate) {
+        filters.meetingDate = parseNaturalDate(filters.meetingDate);
+      }
+      if (filters?.siteVisitDate) {
+        filters.siteVisitDate = parseNaturalDate(filters.siteVisitDate);
+      }
+
       const response = await axios.get(
         process.env.GET_LEADS_API || "http://localhost:5000/api/leads",
         {
@@ -79,11 +108,15 @@ export const getLeadsTool = tool(
           meetingDate: z
             .string()
             .optional()
-            .describe("Specific date for meeting (YYYY-MM-DD)"),
+            .describe(
+              `Date like "YYYY-MM-DD" or "today", "tomorrow", "yesterday"`
+            ),
           siteVisitDate: z
             .string()
             .optional()
-            .describe("Specific date for site visit (YYYY-MM-DD)"),
+            .describe(
+              `Date like "YYYY-MM-DD" or "today", "tomorrow", "yesterday"`
+            ),
         })
         .optional(),
     }),

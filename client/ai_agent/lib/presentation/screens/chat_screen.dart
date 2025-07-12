@@ -125,13 +125,19 @@ class _ChatScreenState extends State<ChatScreen> {
     _speech = stt.SpeechToText();
     _speechEnabled = await _speech.initialize(
       onStatus: (status) {
+        print('Speech status: $status'); // Debug log
         if (status == 'done' || status == 'notListening') {
           setState(() {
             _isListening = false;
           });
+        } else if (status == 'listening') {
+          setState(() {
+            _isListening = true;
+          });
         }
       },
       onError: (error) {
+        print('Speech error: ${error.errorMsg}'); // Debug log
         setState(() {
           _isListening = false;
         });
@@ -139,6 +145,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Speech recognition error: ${error.errorMsg}'), backgroundColor: Theme.of(context).colorScheme.error));
         }
       },
+      debugLogging: true, // Enable debug logging
     );
   }
 
@@ -181,12 +188,14 @@ class _ChatScreenState extends State<ChatScreen> {
             }
           }
         },
-        listenFor: const Duration(seconds: 30), // Reasonable max time
-        pauseFor: const Duration(seconds: 2), // Dynamic pause - stops when user stops speaking
+        listenFor: const Duration(seconds: 60), // Extended listening time
+        pauseFor: const Duration(seconds: 6), // Longer pause to handle natural speech patterns
         listenOptions: stt.SpeechListenOptions(
           partialResults: true, // Enable real-time transcription
           cancelOnError: false,
           listenMode: stt.ListenMode.dictation, // Better for natural speech
+          autoPunctuation: true, // Better sentence handling
+          enableHapticFeedback: true, // Feedback when listening
         ),
         localeId: 'en_US',
       );
@@ -573,6 +582,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         width: 56,
                         height: 56,
                         alignment: Alignment.center,
+                        decoration: _isListening ? BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.red.withAlpha(100), blurRadius: 10, spreadRadius: 2)]) : null,
                         child:
                             isLoading
                                 ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)))
