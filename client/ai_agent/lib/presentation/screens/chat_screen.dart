@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 import '../../core/di/injection.dart';
 import '../../data/models/chat_message.dart';
@@ -22,9 +25,23 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
 
+  // Speech to text
+  late stt.SpeechToText _speech;
+  bool _isListening = false;
+  bool _speechEnabled = false;
+
+  // Text to speech
+  late FlutterTts _flutterTts;
+  bool _isSpeaking = false;
+  String? _currentSpeakingMessageId;
+  bool _autoSpeakEnabled = false;
+
   @override
   void initState() {
     super.initState();
+    _initSpeech();
+    _initTts();
+
     // Load existing messages when chat opens
     context.read<ChatBloc>().add(const LoadExistingMessages());
 
@@ -103,6 +120,187 @@ class _ChatScreenState extends State<ChatScreen> {
     return formatted;
   }
 
+  // Initialize speech to text
+  void _initSpeech() async {
+    _speech = stt.SpeechToText();
+    _speechEnabled = await _speech.initialize(
+      onStatus: (status) {
+        if (status == 'done' || status == 'notListening') {
+          setState(() {
+            _isListening = false;
+          });
+        }
+      },
+      onError: (error) {
+        setState(() {
+          _isListening = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Speech recognition error: ${error.errorMsg}'), backgroundColor: Theme.of(context).colorScheme.error));
+        }
+      },
+    );
+  }
+
+  // Start listening for speech
+  void _startListening() async {
+    // Stop any current TTS playback when starting voice input
+    if (_isSpeaking) {
+      _stopSpeaking();
+    }
+
+    // Check microphone permission
+    final permission = await Permission.microphone.request();
+    if (permission != PermissionStatus.granted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Microphone permission is required for voice input'), backgroundColor: Theme.of(context).colorScheme.error));
+      }
+      return;
+    }
+
+    if (_speechEnabled && !_isListening) {
+      setState(() {
+        _isListening = true;
+        _messageController.clear(); // Clear previous text
+      });
+
+      await _speech.listen(
+        onResult: (result) {
+          setState(() {
+            _messageController.text = result.recognizedWords;
+          });
+
+          // Only send when we get the final result
+          if (result.finalResult) {
+            setState(() {
+              _isListening = false;
+            });
+            // Auto-send the message after speech recognition
+            if (result.recognizedWords.trim().isNotEmpty) {
+              _sendMessage();
+            }
+          }
+        },
+        listenFor: const Duration(seconds: 30), // Reasonable max time
+        pauseFor: const Duration(seconds: 2), // Dynamic pause - stops when user stops speaking
+        listenOptions: stt.SpeechListenOptions(
+          partialResults: true, // Enable real-time transcription
+          cancelOnError: false,
+          listenMode: stt.ListenMode.dictation, // Better for natural speech
+        ),
+        localeId: 'en_US',
+      );
+    }
+  }
+
+  // Stop listening for speech
+  void _stopListening() async {
+    if (_isListening) {
+      await _speech.stop();
+      setState(() {
+        _isListening = false;
+      });
+    }
+  }
+
+  // Initialize text to speech
+  void _initTts() async {
+    _flutterTts = FlutterTts();
+
+    // Set language to Hindi for better Indian accent
+    await _flutterTts.setLanguage("hi-IN");
+    // Fallback to English if Hindi not available
+    List<dynamic> languages = await _flutterTts.getLanguages;
+    if (!languages.contains("hi-IN")) {
+      await _flutterTts.setLanguage("en-IN"); // Indian English
+    }
+
+    await _flutterTts.setSpeechRate(0.6); // Slightly faster for better flow
+    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setPitch(1.1); // Slightly higher pitch for clarity
+
+    _flutterTts.setStartHandler(() {
+      setState(() {
+        _isSpeaking = true;
+      });
+    });
+
+    _flutterTts.setCompletionHandler(() {
+      setState(() {
+        _isSpeaking = false;
+        _currentSpeakingMessageId = null;
+      });
+    });
+
+    _flutterTts.setErrorHandler((msg) {
+      setState(() {
+        _isSpeaking = false;
+        _currentSpeakingMessageId = null;
+      });
+    });
+  }
+
+  // Speak the AI response
+  void _speakText(String text, String messageId) async {
+    // Stop any current speech first (only one audio at a time)
+    if (_isSpeaking) {
+      await _flutterTts.stop();
+      setState(() {
+        _isSpeaking = false;
+        _currentSpeakingMessageId = null;
+      });
+      // Small delay to ensure stop is processed
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
+    setState(() {
+      _currentSpeakingMessageId = messageId;
+    });
+
+    // Clean the text for better speech - comprehensive markdown removal
+    String cleanText = _formatMessageContent(text);
+
+    // Remove all markdown formatting for clean speech
+    cleanText = cleanText.replaceAll(RegExp(r'\*\*(.*?)\*\*'), r'$1'); // Bold **text**
+    cleanText = cleanText.replaceAll(RegExp(r'\*(.*?)\*'), r'$1'); // Italic *text*
+    cleanText = cleanText.replaceAll(RegExp(r'`(.*?)`'), r'$1'); // Inline code `text`
+    cleanText = cleanText.replaceAll(RegExp(r'```[\s\S]*?```'), ''); // Code blocks
+    cleanText = cleanText.replaceAll(RegExp(r'#{1,6}\s*'), ''); // Headers # ## ###
+    cleanText = cleanText.replaceAll(RegExp(r'[-*+]\s*'), ''); // List items - * +
+    cleanText = cleanText.replaceAll(RegExp(r'\[([^\]]+)\]\([^)]+\)'), r'$1'); // Links [text](url)
+    cleanText = cleanText.replaceAll(RegExp(r'!\[([^\]]*)\]\([^)]+\)'), r'$1'); // Images ![alt](url)
+    cleanText = cleanText.replaceAll(RegExp(r'>\s*'), ''); // Blockquotes >
+    cleanText = cleanText.replaceAll(RegExp(r'\|[^|\n]*\|'), ''); // Tables |col1|col2|
+    cleanText = cleanText.replaceAll(RegExp(r'---+'), ''); // Horizontal rules ---
+    cleanText = cleanText.replaceAll(RegExp(r'\n\s*\n'), '. '); // Multiple newlines to period
+    cleanText = cleanText.replaceAll(RegExp(r'\n'), ' '); // Single newlines to space
+    cleanText = cleanText.replaceAll(RegExp(r'\s+'), ' '); // Multiple spaces to single space
+
+    // Replace common English words with Hindi equivalents for better pronunciation
+    cleanText = cleanText.replaceAll(RegExp(r'\blead\b', caseSensitive: false), 'लीड');
+    cleanText = cleanText.replaceAll(RegExp(r'\bmeeting\b', caseSensitive: false), 'मीटिंग');
+    cleanText = cleanText.replaceAll(RegExp(r'\bsite visit\b', caseSensitive: false), 'साइट विजिट');
+    cleanText = cleanText.replaceAll(RegExp(r'\bphone\b', caseSensitive: false), 'फोन');
+    cleanText = cleanText.replaceAll(RegExp(r'\bstatus\b', caseSensitive: false), 'स्टेटस');
+    cleanText = cleanText.replaceAll(RegExp(r'\bname\b', caseSensitive: false), 'नाम');
+
+    // Final cleanup
+    cleanText = cleanText.trim();
+
+    if (cleanText.isNotEmpty) {
+      await _flutterTts.speak(cleanText);
+    }
+  }
+
+  // Stop speaking
+  void _stopSpeaking() async {
+    await _flutterTts.stop();
+    setState(() {
+      _isSpeaking = false;
+      _currentSpeakingMessageId = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -128,6 +326,20 @@ class _ChatScreenState extends State<ChatScreen> {
             ],
           ),
           actions: [
+            // Auto-speak toggle button
+            Tooltip(
+              message: _autoSpeakEnabled ? 'Auto-speak ON' : 'Auto-speak OFF',
+              child: IconButton(
+                onPressed: () {
+                  setState(() {
+                    _autoSpeakEnabled = !_autoSpeakEnabled;
+                  });
+                  HapticFeedback.lightImpact();
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Icon(_autoSpeakEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded, color: Colors.white, size: 20), const SizedBox(width: 8), Text(_autoSpeakEnabled ? 'Auto-speak enabled' : 'Auto-speak disabled')]), backgroundColor: _autoSpeakEnabled ? Colors.green : colorScheme.primary, behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+                },
+                icon: Icon(_autoSpeakEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded, color: _autoSpeakEnabled ? Colors.green : colorScheme.onSurfaceVariant),
+              ),
+            ),
             IconButton(
               onPressed: () {
                 HapticFeedback.lightImpact();
@@ -147,6 +359,18 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (state is ChatLoaded) {
                     // Always scroll to bottom when chat is loaded (including initial load)
                     _scrollToBottom();
+
+                    // Auto-speak the latest AI response if auto-speak is enabled
+                    if (_autoSpeakEnabled && state.messages.isNotEmpty) {
+                      final lastMessage = state.messages.last;
+                      if (!lastMessage.isUser && !lastMessage.isLoading) {
+                        // Small delay to ensure the message is displayed first
+                        Future.delayed(const Duration(milliseconds: 500), () {
+                          final messageId = lastMessage.timestamp.millisecondsSinceEpoch.toString();
+                          _speakText(lastMessage.content, messageId);
+                        });
+                      }
+                    }
                   } else if (state is ChatError) {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${state.message}'), backgroundColor: colorScheme.error, behavior: SnackBarBehavior.floating));
                   }
@@ -264,7 +488,29 @@ class _ChatScreenState extends State<ChatScreen> {
 
                   const SizedBox(height: 8),
 
-                  Text(DateFormat('HH:mm').format(message.timestamp), style: theme.textTheme.labelSmall?.copyWith(color: message.isUser ? Colors.white.withAlpha(180) : colorScheme.onSurfaceVariant.withAlpha(180), fontSize: 11)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(DateFormat('HH:mm').format(message.timestamp), style: theme.textTheme.labelSmall?.copyWith(color: message.isUser ? Colors.white.withAlpha(180) : colorScheme.onSurfaceVariant.withAlpha(180), fontSize: 11)),
+
+                      // Speaker button for AI responses only
+                      if (!message.isUser && !message.isLoading)
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            final messageId = message.timestamp.millisecondsSinceEpoch.toString();
+                            if (_isSpeaking && _currentSpeakingMessageId == messageId) {
+                              // Stop current speech if this message is speaking
+                              _stopSpeaking();
+                            } else {
+                              // Start speaking this message (will stop any other speech first)
+                              _speakText(message.content, messageId);
+                            }
+                          },
+                          child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: (_isSpeaking && _currentSpeakingMessageId == message.timestamp.millisecondsSinceEpoch.toString()) ? colorScheme.primary.withAlpha(40) : colorScheme.primary.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon((_isSpeaking && _currentSpeakingMessageId == message.timestamp.millisecondsSinceEpoch.toString()) ? Icons.stop_rounded : Icons.volume_up_rounded, size: 16, color: colorScheme.primary)),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -313,10 +559,27 @@ class _ChatScreenState extends State<ChatScreen> {
                               ? null
                               : () {
                                 HapticFeedback.mediumImpact();
-                                // TODO: Implement voice input
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Icon(Icons.mic_rounded, color: Colors.white, size: 20), const SizedBox(width: 8), const Text('🎤 Voice input coming soon!')]), backgroundColor: colorScheme.primary, behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+                                if (_isListening) {
+                                  _stopListening();
+                                } else {
+                                  // Stop any TTS before starting voice input
+                                  if (_isSpeaking) {
+                                    _stopSpeaking();
+                                  }
+                                  _startListening();
+                                }
                               },
-                      child: Container(width: 56, height: 56, alignment: Alignment.center, child: isLoading ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation<Color>(Colors.white))) : Icon(Icons.mic_rounded, color: Colors.white, size: 28)),
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        alignment: Alignment.center,
+                        child:
+                            isLoading
+                                ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)))
+                                : _isListening
+                                ? Icon(Icons.stop_rounded, color: Colors.white, size: 28)
+                                : Icon(Icons.mic_rounded, color: Colors.white, size: 28),
+                      ),
                     ),
                   ),
                 );

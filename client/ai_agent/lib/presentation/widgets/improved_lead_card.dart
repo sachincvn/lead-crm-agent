@@ -129,12 +129,20 @@ class LeadCard extends StatelessWidget {
       info.add(_getBudgetText());
     }
 
-    // Add scheduled activities
+    // Add scheduled activities with dates
     if (lead.siteVisit?.isScheduled == true) {
-      info.add('Site Visit');
+      if (lead.siteVisit?.date != null) {
+        info.add('Site Visit: ${DateFormat('MMM dd').format(lead.siteVisit!.date!)}');
+      } else {
+        info.add('Site Visit');
+      }
     }
     if (lead.meeting?.isScheduled == true) {
-      info.add('Meeting');
+      if (lead.meeting?.date != null) {
+        info.add('Meeting: ${DateFormat('MMM dd').format(lead.meeting!.date!)}');
+      } else {
+        info.add('Meeting');
+      }
     }
 
     return Text(info.join(' • '), style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis);
