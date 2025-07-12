@@ -1,11 +1,16 @@
-const express = require("express");
+import express from "express";
+import {
+  createLead,
+  getLeads,
+  updateLead,
+  deleteLead,
+} from "../controllers/lead.controller.js";
+
 const router = express.Router();
-const leadController = require("../controllers/lead.controller");
 
-// CRUD endpoints
-router.post("/", leadController.createLead);
-router.get("/", leadController.getLeads);
-router.put("/:id", leadController.updateLead);
-router.delete("/:id", leadController.deleteLead);
+router.post("/", createLead);
+router.get("/", getLeads);
+router.put("/:id", updateLead);
+router.delete("/:id", deleteLead);
 
-module.exports = router;
+export default router;

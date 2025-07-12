@@ -1,16 +1,18 @@
-const express = require("express");
+import express from "express";
+import leadRoutes from "./routes/lead.routes.js";
+import agentRoutes from "./routes/agent.routes.js";
+import cors from "cors";
+
 const app = express();
-const leadRoutes = require("./routes/lead.routes");
 
-// Middleware
 app.use(express.json());
+app.use(cors({ origin: "*" }));
 
-// Routes
 app.use("/api/leads", leadRoutes);
+app.use("/api/agent", agentRoutes);
 
-// Health check
 app.get("/", (req, res) => {
-  res.send("Lead CRM API is running...");
+  res.send("Server is running");
 });
 
-module.exports = app;
+export default app;

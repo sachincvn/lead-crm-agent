@@ -1,4 +1,4 @@
-const LEAD_STATUS = [
+export const LEAD_STATUS = [
   "New",
   "Follow-Up",
   "Meeting Scheduled",
@@ -10,7 +10,7 @@ const LEAD_STATUS = [
   "Closed",
 ];
 
-const LEAD_SOURCE = [
+export const LEAD_SOURCE = [
   "JustDial",
   "MagicBricks",
   "99acres",
@@ -21,8 +21,3 @@ const LEAD_SOURCE = [
   "Website",
   "Other",
 ];
-
-module.exports = {
-  LEAD_STATUS,
-  LEAD_SOURCE,
-};

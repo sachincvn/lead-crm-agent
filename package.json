@@ -1,21 +1,36 @@
 {
-  "name": "lead-crm-api",
+  "name": "lead-crm-agent",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "chat": "node chat-console.js",
+    "test": "node test-agent.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "crm",
+    "lead-management",
+    "ai-agent",
+    "langchain",
+    "real-estate"
+  ],
+  "author": "CRM Agent Developer",
+  "license": "MIT",
+  "description": "AI-powered Lead CRM Agent with LangChain integration for real estate lead management",
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "@langchain/google-genai": "^0.2.14",
-    "axios": "^1.10.0",
+     "@langchain/google-genai": "^0.2.14",
+    "@langchain/langgraph": "^0.3.8",
+    "@types/express": "^5.0.3",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
+    "mongoose": "^8.16.2",
+    "axios": "^1.10.0",
+    "cors": "^2.8.5",
+    "cros": "^1.1.0",
+    "cross": "^1.0.0",
     "langchain": "^0.3.29",
-    "mongoose": "^8.16.2"
+    "zod": "^3.25.76"
   }
 }

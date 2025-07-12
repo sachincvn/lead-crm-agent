@@ -1,5 +1,5 @@
-const mongoose = require("mongoose");
-const { LEAD_STATUS, LEAD_SOURCE } = require("../enums/lead.enums");
+import mongoose from "mongoose";
+import { LEAD_STATUS, LEAD_SOURCE } from "../enums/lead.enums.js";
 
 const LeadSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -43,4 +43,4 @@ const LeadSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-module.exports = mongoose.model("Lead", LeadSchema);
+export default mongoose.model("Lead", LeadSchema);
