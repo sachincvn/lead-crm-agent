@@ -2,6 +2,21 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import axios from "axios";
 
+// ✅ Inline helper for date parsing
+function parseNaturalDate(input) {
+  const today = new Date();
+  if (input === "today") return today.toISOString();
+  if (input === "tomorrow") {
+    today.setDate(today.getDate() + 1);
+    return today.toISOString();
+  }
+  if (input === "yesterday") {
+    today.setDate(today.getDate() - 1);
+    return today.toISOString();
+  }
+  return input;
+}
+
 const LeadStatusEnum = z.enum([
   "New",
   "Follow-Up",
@@ -42,6 +57,14 @@ export const updateLeadTool = tool(
       }
 
       const leadId = leads[0]._id;
+
+      // ✅ Convert meeting/site visit dates if present
+      if (updates?.meeting?.date) {
+        updates.meeting.date = parseNaturalDate(updates.meeting.date);
+      }
+      if (updates?.siteVisit?.date) {
+        updates.siteVisit.date = parseNaturalDate(updates.siteVisit.date);
+      }
 
       const updateResp = await axios.put(
         `${process.env.GET_LEADS_API}/${leadId}`,
@@ -93,14 +116,24 @@ export const updateLeadTool = tool(
           meeting: z
             .object({
               isScheduled: z.boolean().optional(),
-              date: z.string().optional(),
+              date: z
+                .string()
+                .optional()
+                .describe(
+                  `Meeting date like "2025-07-12" or "today", "tomorrow"`
+                ),
               mode: z.string().optional(),
             })
             .optional(),
           siteVisit: z
             .object({
               isScheduled: z.boolean().optional(),
-              date: z.string().optional(),
+              date: z
+                .string()
+                .optional()
+                .describe(
+                  `Site visit date like "2025-07-12" or "today", "tomorrow"`
+                ),
               location: z.string().optional(),
             })
             .optional(),
